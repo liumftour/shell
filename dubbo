@@ -1,0 +1,90 @@
+#!/bin/bash
+# chkconfig: - 96 14
+# description: The Dubbo Service Script,running by dubbo user.
+# version:1.3
+ 
+#defined JAVA_HOME
+source /etc/profile
+
+if [ -z "$JAVACMD" ] ; then
+  if [ -n "$JAVA_HOME"  ] ; then
+    JAVACMD="$JAVA_HOME/bin/java"
+  else
+    JAVACMD=`which java`
+  fi
+fi
+if [ ! -x "$JAVACMD" ] ; then
+  echo "Error: JAVA_HOME is not defined correctly."
+  echo "  We cannot execute $JAVACMD"
+  exit 1
+fi
+
+#defined project
+project_name=trade-service
+
+
+#defined variables
+dubbo_path=/data/dubbo/
+CONF_DIR=$dubbo_path$project_name/conf
+LIB_DIR=$dubbo_path$project_name/lib
+JAVA_OPTS="-server -Xms2G -Xmx2G -Xss256K -XX:PermSize=128M -XX:MaxPermSize=256M -XX:+UseConcMarkSweepGC -XX:+CMSParallelRemarkEnabled -XX:+UseCMSCompactAtFullCollection -XX:+DisableExplicitGC -XX:+PrintGCDetails -Xloggc:$LOGS_DIR/gc.log -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=$LOGS_DIR/common_service.dump -Djava.net.preferIPv4Stack=true"
+LIB_JARS=`ls $LIB_DIR | grep .jar | awk '{print "'$LIB_DIR'/"$0}' | tr "\n" ":"`
+log=`grep "dubbo.logback.file" ${dubbo_path_list[$2]}conf/dubbo.properties | awk -F= '{print $2}'`
+STDOUT_FILE=/data/logs/$log
+PIDS=`ps -ef | grep $project_name | grep -v grep | grep java | awk '{print $2}'`
+
+startup() {
+   if [ $UID -eq 0 ];then
+     su - dubbo -c "$JAVACMD $JAVA_OPTS -classpath $CONF_DIR:$LIB_JARS com.alibaba.dubbo.container.Main $* > $STDOUT_FILE 2>&1 &"
+   elif [ `whoami` == "dubbo" ];then
+     $JAVACMD $JAVA_OPTS -classpath $CONF_DIR:$LIB_JARS com.alibaba.dubbo.container.Main $* > $STDOUT_FILE 2>&1 &
+   else
+     echo "Please use dubbo or root start dubbo service"
+   fi 
+}
+
+#functions
+start() {
+   if [ -n "$PIDS" ]; then
+     echo "ERROR: The ${project_name} is running!"
+     exit 1
+   fi
+   echo -n "Starting ${project_name}"
+   startup
+   local PID=`ps -ef | grep $project_name | grep -v grep | grep java | awk '{print $2}'`
+   if [ -n "$PID"  ];then
+     echo -e "\t\t[\e[1;32mok\e[0m]"
+   else 
+     echo -e "\t\t[\e[1;31mfail\e[0m]"
+   fi
+}
+
+stop() {
+   if [ -z "$PIDS" ]; then
+     echo "ERROR: The ${project_name} does not started!"
+     exit 1
+   fi
+   echo -n "Stopping the ${project_name}"
+   if [ -n "$PIDS" ];then
+     kill -9 $PIDS &> /dev/null
+     [ "$?" -eq 0 ] && echo -e "\t\t[\e[1;32mok\e[0m]" || echo -e "\t\t[\e[1;31mfail\e[0m]"
+   fi
+}
+#
+#
+case $1 in
+start)
+   $1 
+   ;;
+stop)
+   $1
+   ;;
+restart)
+   stop
+   start
+*)
+   echo "Usage: dubbo [start|stop]"
+   exit 1
+   ;;
+esac
+exit 0
